@@ -18,14 +18,20 @@ export async function POST(request: Request) {
   const chatId = body.id;
   const messages = await convertToModelMessages(body.messages);
   const session = await resumeOrCreateSession(chatId);
-  const result = await harnessAgent.stream({ session, messages });
 
-  return createUIMessageStreamResponse({
-    stream: toUIMessageStream({
-      stream: result.stream,
-      onEnd: async () => {
-        await detachAndPersist(chatId, session);
-      },
-    }),
-  });
+  try {
+    const result = await harnessAgent.stream({ session, messages });
+
+    return createUIMessageStreamResponse({
+      stream: toUIMessageStream({
+        stream: result.stream,
+        onEnd: async () => {
+          await detachAndPersist(chatId, session);
+        },
+      }),
+    });
+  } catch (error) {
+    await session.destroy().catch(() => {});
+    throw error;
+  }
 }
