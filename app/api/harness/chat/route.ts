@@ -5,11 +5,12 @@ import {
   toUIMessageStream,
   type UIMessage,
 } from "ai";
-import { harnessAgent } from "./agent";
-import { detachAndPersist, resumeOrCreateSession } from "./session-store";
+import { DEFAULT_MODEL_OPTION_ID, type ModelOptionId } from "@/lib/models";
+import { detachAndPersist, harnessAgentFor, resumeOrCreateSession } from "./session-store";
 
 export async function POST(request: Request) {
-  const body: { id?: string; messages: UIMessage[] } = await request.json();
+  const body: { id?: string; messages: UIMessage[]; model?: ModelOptionId } =
+    await request.json();
 
   if (!body.id) {
     throw new Error("Missing chat id");
@@ -17,7 +18,11 @@ export async function POST(request: Request) {
 
   const chatId = body.id;
   const messages = await convertToModelMessages(body.messages);
-  const session = await resumeOrCreateSession(chatId);
+  const { modelOptionId, session } = await resumeOrCreateSession(
+    chatId,
+    body.model ?? DEFAULT_MODEL_OPTION_ID,
+  );
+  const harnessAgent = harnessAgentFor(modelOptionId);
 
   try {
     const result = await harnessAgent.stream({ session, messages });
@@ -26,7 +31,7 @@ export async function POST(request: Request) {
       stream: toUIMessageStream({
         stream: result.stream,
         onEnd: async () => {
-          await detachAndPersist(chatId, session);
+          await detachAndPersist(chatId, modelOptionId, session);
         },
       }),
     });

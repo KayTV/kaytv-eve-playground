@@ -1,8 +1,10 @@
 "use client";
 
 import type { UserContent } from "ai";
+import type { EveMessage } from "eve/react";
 import { useEveAgent } from "eve/react";
 import { AlertCircleIcon } from "lucide-react";
+import { useEffect } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -14,6 +16,7 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
+import { EVE_MODEL_IDS, type ModelOptionId } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { AgentMessage } from "./agent-message";
 
@@ -21,10 +24,37 @@ const AGENT_NAME = "kaytv-eve-playground";
 
 type AgentStatus = ReturnType<typeof useEveAgent>["status"];
 
-export function AgentChat() {
-  const agent = useEveAgent();
+// agent/channels/eve.ts's onMessage prepends the chosen model as a context
+// message in this exact format — a real, durable user-role message that
+// should never be shown in the transcript.
+const MODEL_MARKER_PATTERN = /^\[\[eve-model:.*\]\]$/;
+
+function isModelMarkerMessage(message: EveMessage): boolean {
+  return (
+    message.role === "user" &&
+    message.parts.length === 1 &&
+    message.parts[0].type === "text" &&
+    MODEL_MARKER_PATTERN.test(message.parts[0].text)
+  );
+}
+
+export function AgentChat({
+  model,
+  onEmptyChange,
+}: {
+  readonly model: ModelOptionId;
+  readonly onEmptyChange?: (isEmpty: boolean) => void;
+}) {
+  const agent = useEveAgent({
+    headers: () => ({ "x-eve-model": EVE_MODEL_IDS[model] }),
+  });
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
-  const isEmpty = agent.data.messages.length === 0;
+  const messages = agent.data.messages.filter((message) => !isModelMarkerMessage(message));
+  const isEmpty = messages.length === 0;
+
+  useEffect(() => {
+    onEmptyChange?.(isEmpty);
+  }, [isEmpty, onEmptyChange]);
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const text = message.text.trim();
@@ -84,12 +114,10 @@ export function AgentChat() {
       {isEmpty ? null : (
         <Conversation className="min-h-0 flex-1">
           <ConversationContent className="mx-auto w-full max-w-3xl gap-6 px-4 py-6 sm:px-6">
-            {agent.data.messages.map((message, index) => (
+            {messages.map((message, index) => (
               <AgentMessage
                 canRespond={!isBusy}
-                isStreaming={
-                  agent.status === "streaming" && index === agent.data.messages.length - 1
-                }
+                isStreaming={agent.status === "streaming" && index === messages.length - 1}
                 key={message.id}
                 message={message}
                 onInputResponses={(inputResponses) => agent.send({ inputResponses })}

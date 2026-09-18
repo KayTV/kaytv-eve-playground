@@ -3,7 +3,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircleIcon } from "lucide-react";
 import {
   Conversation,
@@ -16,19 +16,30 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
+import type { ModelOptionId } from "@/lib/models";
 import { cn } from "@/lib/utils";
 import { HarnessMessage } from "./harness-message";
 
 const AGENT_NAME = "Claude Code (harness)";
 
-export function HarnessChat() {
+export function HarnessChat({
+  model,
+  onEmptyChange,
+}: {
+  readonly model: ModelOptionId;
+  readonly onEmptyChange?: (isEmpty: boolean) => void;
+}) {
   const [chatId] = useState(() => crypto.randomUUID());
   const { messages, sendMessage, status, stop, error } = useChat({
     id: chatId,
-    transport: new DefaultChatTransport({ api: "/api/harness/chat" }),
+    transport: new DefaultChatTransport({ api: "/api/harness/chat", body: { model } }),
   });
   const isBusy = status === "submitted" || status === "streaming";
   const isEmpty = messages.length === 0;
+
+  useEffect(() => {
+    onEmptyChange?.(isEmpty);
+  }, [isEmpty, onEmptyChange]);
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const text = message.text.trim();
